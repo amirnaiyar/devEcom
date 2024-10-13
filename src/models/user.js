@@ -27,7 +27,7 @@ const userSchema = new mongoose.Schema({
     refreshToken: { type: String },
     role: { type: String, enum: ['customer', 'admin'], default: 'customer' },
     addresses: [addressSchema], // Array of addresses (billing, shipping, etc.)
-    phone: { type: String, required: true },
+    phone: { type: String },
     wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }], // Array of product references
     cart: [{
         product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
