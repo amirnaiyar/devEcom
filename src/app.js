@@ -30,6 +30,7 @@ DBConnection.then(() => {
     process.exit(1)  // Exit the application with an error code 1.
 })
 
+app.options('*', cors()); // Enable pre-flight across-the-board
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
