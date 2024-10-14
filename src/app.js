@@ -4,6 +4,7 @@ const port = process.env.PORT || 5001
 const DBConnection = require("./database")
 const bodyParser = require("body-parser")
 const cookieParser = require("cookie-parser")
+const cors = require('cors');
 const authRouter = require('./routes/auth')
 const userRouter = require('./routes/user')
 const productRouter = require('./routes/product')
@@ -17,6 +18,8 @@ const invoicesRouter = require('./routes/invoice')
 app.use(bodyParser.json())
 app.use(cookieParser())
 
+app.use(cors());
+
 DBConnection.then(() => {
     console.log("Database connected successful")
     app.listen(port, () => {
@@ -26,6 +29,12 @@ DBConnection.then(() => {
     console.error(err)
     process.exit(1)  // Exit the application with an error code 1.
 })
+
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    next();
+  });
 
 
 app.use('/auth', authRouter)
