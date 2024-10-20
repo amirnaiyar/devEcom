@@ -6,6 +6,7 @@ const bcrypt = require("bcrypt")
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const { userAuth } = require("../middleware/auth")
+const { errorHandler } = require("../middleware/errorHandler")
 
 
 
@@ -193,7 +194,7 @@ authRouter.post('/forgot-password', async (req, res) => {
       await user.save();
   
       // Send password reset email
-      const resetUrl = `http://your-frontend-url/reset-password?token=${resetToken}&email=${email}`;
+      const resetUrl = `https://ecom-reset.vercel.app/reset-password?token=${resetToken}&email=${email}`;
   
       const mailOptions = {
         to: user.email,
@@ -217,7 +218,7 @@ authRouter.post('/forgot-password', async (req, res) => {
   });
   
   // Reset Password Route
-  authRouter.post('/reset-password', async (req, res) => {
+  authRouter.post('/reset-password', errorHandler, async (req, res) => {
     const { token, email, newPassword } = req.body;
   
     try {
@@ -227,13 +228,13 @@ authRouter.post('/forgot-password', async (req, res) => {
       });
   
       if (!user) {
-        return res.status(400).json({ message: 'Invalid or expired token' });
+        return res.status(401).json({ status: 'error', message: 'Invalid or expired token' });
       }
   
       // Compare the token with the stored hash
       const isValid = await bcrypt.compare(token, user.resetPasswordToken);
       if (!isValid) {
-        return res.status(400).json({ message: 'Invalid token' });
+        return res.status(401).json({ status: 'error',message: 'Invalid token' });
       }
   
       // Hash and save the new password
@@ -243,10 +244,10 @@ authRouter.post('/forgot-password', async (req, res) => {
       user.resetPasswordExpires = undefined; // Clear the expiration time
   
       await user.save();
-      res.json({ message: 'Password successfully reset' });
+      res.json({ status: 'succee',message: 'Password successfully reset' });
     } catch (error) {
       console.error(error);
-      res.status(500).json({ message: 'Server error' });
+      res.status(500).json({ status: 'error', message: 'Server error' });
     }
   });
 
