@@ -2,9 +2,21 @@ const express = require("express")
 const authRouter = express.Router()
 const User = require("../models/user")
 const jwt = require("jsonwebtoken")
-// const SECRET_KEY = "K74jdfP0*(7"
 const bcrypt = require("bcrypt")
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 const { userAuth } = require("../middleware/auth")
+
+
+
+// Transporter setup for sending emails (Configure with your credentials)
+const transporter = nodemailer.createTransport({
+    service: 'gmail', // Or use any other provider
+    auth: {
+      user: process.env.EMAIL_USER, // Your email
+      pass: process.env.EMAIL_PASSWORD, // Your email password or app-specific password
+    },
+  });
 
 // Signup route
 authRouter.post('/signup', async (req, res) => {
@@ -51,8 +63,7 @@ authRouter.post('/signup', async (req, res) => {
             refreshToken
         });
     } catch (error) {
-        console.log(error)
-        res.status(500).send('Server error');
+        res.status(500).send('Server error: ', error);
     }
 });
 
@@ -98,8 +109,7 @@ authRouter.post('/logout', userAuth, async (req, res) => {
       const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET_KEY);
   
       // Find the user by ID and check the refresh token
-      const user = await User.findById(decoded.id);
-  
+      const user = await User.findById(decoded._id);
       if (!user || user.refreshToken !== refreshToken) {
         return res.status(403).json({ message: 'Invalid refresh token' });
       }
@@ -161,5 +171,83 @@ authRouter.post('/token/rotate', async (req, res) => {
         return res.status(403).json({ message: 'Invalid or expired refresh token' });
     }
 });
+
+
+
+// Forgot Password Route
+authRouter.post('/forgot-password', async (req, res) => {
+    const { email } = req.body;
+  
+    try {
+      const user = await User.findOne({ email });
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+  
+      // Generate reset token and expiration time
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const hash = await bcrypt.hash(resetToken, 10); // Hash the token for security
+  
+      user.resetPasswordToken = hash;
+      user.resetPasswordExpires = Date.now() + 3600000; // 1 hour from now
+      await user.save();
+  
+      // Send password reset email
+      const resetUrl = `http://your-frontend-url/reset-password?token=${resetToken}&email=${email}`;
+  
+      const mailOptions = {
+        to: user.email,
+        from: process.env.EMAIL_USER,
+        subject: 'Password Reset',
+        html: `
+          <h1>Password Reset Request</h1>
+          <p>You requested to reset your password. Click the link below to reset it:</p>
+          <a href="${resetUrl}">Reset Password</a>
+          <p>This link will expire in 1 hour.</p>
+        `,
+      };
+  
+      await transporter.sendMail(mailOptions);
+  
+      res.json({ message: 'Password reset link sent to your email' });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  });
+  
+  // Reset Password Route
+  authRouter.post('/reset-password', async (req, res) => {
+    const { token, email, newPassword } = req.body;
+  
+    try {
+      const user = await User.findOne({
+        email,
+        resetPasswordExpires: { $gt: Date.now() }, // Check if the token is still valid
+      });
+  
+      if (!user) {
+        return res.status(400).json({ message: 'Invalid or expired token' });
+      }
+  
+      // Compare the token with the stored hash
+      const isValid = await bcrypt.compare(token, user.resetPasswordToken);
+      if (!isValid) {
+        return res.status(400).json({ message: 'Invalid token' });
+      }
+  
+      // Hash and save the new password
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      user.password = hashedPassword;
+      user.resetPasswordToken = undefined; // Clear the token
+      user.resetPasswordExpires = undefined; // Clear the expiration time
+  
+      await user.save();
+      res.json({ message: 'Password successfully reset' });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  });
 
 module.exports = authRouter
