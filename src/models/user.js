@@ -47,7 +47,7 @@ userSchema.methods.generateAccessToken = function () {
     return jwt.sign( { _id: this._id,
     //  username: this.username 
     },
-    process.env.ACCESS_TOKEN_SECRET_KEY, { expiresIn: "1d" } // Token valid for 1 day ); 
+    process.env.ACCESS_TOKEN_SECRET_KEY, { expiresIn: "15m" } // Token valid for 1 day ); 
     )};
     userSchema.methods.generateRefreshToken = function () {
       return jwt.sign(

@@ -9,15 +9,15 @@ const { userAuth } = require("../middleware/auth")
 const { errorHandler } = require("../middleware/errorHandler")
 
 
-
 // Transporter setup for sending emails (Configure with your credentials)
-const transporter = nodemailer.createTransport({
-    service: 'gmail', // Or use any other provider
-    auth: {
-      user: process.env.EMAIL_USER, // Your email
-      pass: process.env.EMAIL_PASSWORD, // Your email password or app-specific password
-    },
-  });
+var transporter = nodemailer.createTransport({
+  host: process.env.HOST,
+  port: 587,
+  auth: {
+    user: process.env.USERNAME,
+    pass: process.env.PASSWORD
+  }
+});
 
 // Signup route
 authRouter.post('/signup', async (req, res) => {
@@ -70,7 +70,7 @@ authRouter.post('/signup', async (req, res) => {
 
 authRouter.post("/login", async (req, res) => {
     try {
-
+      console.log(req.body, 'req.body')
         const { email, password } = req.body
         const user = await User.findOne({
             email
@@ -111,6 +111,7 @@ authRouter.post('/logout', userAuth, async (req, res) => {
   
       // Find the user by ID and check the refresh token
       const user = await User.findById(decoded._id);
+      console.log(user)
       if (!user || user.refreshToken !== refreshToken) {
         return res.status(403).json({ message: 'Invalid refresh token' });
       }
@@ -210,7 +211,7 @@ authRouter.post('/forgot-password', async (req, res) => {
   
       await transporter.sendMail(mailOptions);
   
-      res.json({ message: 'Password reset link sent to your email' });
+      res.json({ message: 'Password reset link sent to your email', data: resetUrl  });
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: 'Server error' });
@@ -218,14 +219,17 @@ authRouter.post('/forgot-password', async (req, res) => {
   });
   
   // Reset Password Route
-  authRouter.post('/reset-password', errorHandler, async (req, res) => {
-    const { token, email, newPassword } = req.body;
-  
+  authRouter.post('/reset-password', async (req, res) => {
+    console.log(req.body, 'req.body')
+    const { token, email, password } = req.body;
+    // const { token, email, newPassword } = req.query;
+    console.log(token, email, password, 'data')
     try {
       const user = await User.findOne({
         email,
         resetPasswordExpires: { $gt: Date.now() }, // Check if the token is still valid
       });
+      console.log(user, 'user')
   
       if (!user) {
         return res.status(401).json({ status: 'error', message: 'Invalid or expired token' });
@@ -236,15 +240,14 @@ authRouter.post('/forgot-password', async (req, res) => {
       if (!isValid) {
         return res.status(401).json({ status: 'error',message: 'Invalid token' });
       }
-  
       // Hash and save the new password
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      const hashedPassword = await bcrypt.hash(password, 10);
       user.password = hashedPassword;
       user.resetPasswordToken = undefined; // Clear the token
       user.resetPasswordExpires = undefined; // Clear the expiration time
-  
+      console.log(hashedPassword, 'hashedPassword')
       await user.save();
-      res.json({ status: 'succee',message: 'Password successfully reset' });
+      res.json({ status: 'success',message: 'Password successfully reset' });
     } catch (error) {
       console.error(error);
       res.status(500).json({ status: 'error', message: 'Server error' });

@@ -18,7 +18,12 @@ const invoicesRouter = require('./routes/invoice')
 app.use(bodyParser.json())
 app.use(cookieParser())
 
-app.use(cors());
+const corsOption = {
+    origin: ['http://localhost:5001', 'http://localhost:3000', 'https://ecom-reset.vercel.app'],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE"],
+}
+app.use(cors(corsOption));
 
 DBConnection.then(() => {
     console.log("Database connected successful")
