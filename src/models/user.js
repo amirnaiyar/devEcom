@@ -3,6 +3,8 @@ const jwt = require("jsonwebtoken")
 
 // Address sub-schema (for reusability in multiple places)
 const addressSchema = new mongoose.Schema({
+    fullName: { type: String, required: true },
+    phone: { type: String, required: true },
     street: { type: String, required: true },
     city: { type: String, required: true },
     state: { type: String, required: true },
@@ -47,7 +49,7 @@ userSchema.methods.generateAccessToken = function () {
     return jwt.sign( { _id: this._id,
     //  username: this.username 
     },
-    process.env.ACCESS_TOKEN_SECRET_KEY, { expiresIn: "15m" } // Token valid for 1 day ); 
+    process.env.ACCESS_TOKEN_SECRET_KEY, { expiresIn: "1d" } // Token valid for 1 day ); 
     )};
     userSchema.methods.generateRefreshToken = function () {
       return jwt.sign(

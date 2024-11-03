@@ -7,6 +7,7 @@ const productSchema = new mongoose.Schema({
     price: { type: Number, required: true },
     stock: { type: Number, default: 0 }, // Inventory count
     category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true },
+    subcategory: { type: mongoose.Schema.Types.ObjectId, ref: "Subcategory" }, // Link to Subcategory
     brand: { type: String },
     images: [{ type: String }],  // URLs of product images
     reviews: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Review' }],

@@ -21,6 +21,7 @@ categoryRouter.post('/', async (req, res) => {
 categoryRouter.get('/', async (req, res) => {
     try {
         const categories = await Category.find();
+        console.log(categories, 'category');
         res.status(200).json(categories);
     } catch (error) {
         res.status(400).json({ message: 'Error fetching categories', error });
@@ -74,6 +75,26 @@ categoryRouter.get('/slug/:slug', async (req, res) => {
         res.status(400).json({ message: 'Error fetching category', error });
     }
 });
+
+categoryRouter.get("/:categorySlug/subcategories", async (req, res) => {
+    const categorySlug = req.params.categorySlug;
+  
+    try {
+      // Find the category by name and populate the subcategories
+      const category = await Category.findOne({ slug: categorySlug }).populate("subcategories");
+  
+      if (!category) {
+        return res.status(404).json({ message: "Category not found" });
+      }
+  
+      res.status(200).json({
+        category: category.name,
+        subcategories: category.subcategories
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching subcategories", error });
+    }
+  });
 
 
 
