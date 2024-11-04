@@ -5,8 +5,8 @@ const productRouter = express.Router();
 // Create a new product
 productRouter.post('/', async (req, res) => {
     try {
-        const { name, description, price, stock, category, subcategory, brand, images } = req.body;
-        const product = new Product({ name, description, price, stock, category, subcategory, brand, images });
+        const { name, description, price, sellingPrice, stock, category, subcategory, brand, images } = req.body;
+        const product = new Product({ name, description, price, sellingPrice, stock, category, subcategory, brand, images });
         await product.save();
         res.status(201).json(product);
     } catch (error) {

@@ -1,6 +1,7 @@
 const express = require('express');
 const Subcategory = require('../models/subcategory');
 const Category = require('../models/category');
+const Product = require('../models/product');
 const subcategoryRouter = express.Router();
 
 // Create a new category
@@ -38,18 +39,28 @@ subcategoryRouter.post("/", async (req, res) => {
   });
 
 // Get all categories
-subcategoryRouter.get('/', async (req, res) => {
-    const subcategoryName = req.params.name;
-
-  try {
-    const subcategories = await Subcategory.find({ name: subcategoryName })
-      .populate("category", "name"); // Populate category name if needed
-
-    res.status(200).json(subcategories);
-  } catch (error) {
-    res.status(500).json({ message: "Error fetching subcategories", error });
-  }
-});
+subcategoryRouter.get("/:subcategoryId/products", async (req, res) => {
+    const subcategoryId = req.params.subcategoryId;
+  
+    try {
+      // Fetch the subcategory and populate the main category (optional)
+      const subcategory = await Subcategory.findById(subcategoryId).populate("category", "name");
+      if (!subcategory) {
+        return res.status(404).json({ message: "Subcategory not found" });
+      }
+  
+      // Fetch all products associated with this subcategory
+      const products = await Product.find({ subcategory: subcategoryId }).populate("category", "name");
+  
+      res.status(200).json({
+        name: subcategory.name,
+        products,
+      });
+    } catch (error) {
+      console.log(error);
+      res.status(500).json({ message: "Error fetching products for the subcategory", error });
+    }
+  });
 
 
 
