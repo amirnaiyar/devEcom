@@ -15,6 +15,9 @@ const reviewRouter = require('./routes/review')
 const orderRouter = require('./routes/order')
 const invoicesRouter = require('./routes/invoice')
 const subcategoryRouter = require("./routes/subcategory")
+const colorRouter = require("./routes/color")
+const sizeRouter = require("./routes/size")
+const couponRouter = require("./routes/coupon")
 
 app.use(bodyParser.json())
 app.use(cookieParser())
@@ -54,10 +57,12 @@ app.use('/wishlist', wishlistRouter)
 app.use('/review', reviewRouter)
 app.use('/orders', orderRouter)
 app.use("/invoices", invoicesRouter)
+app.use("/color", colorRouter)
+app.use("/size", sizeRouter)
+app.use("/coupon", couponRouter)
 
 app.get("/", (req, res) => {
     res.json({
         message: 'App is running successfully!'
     })
-
 })

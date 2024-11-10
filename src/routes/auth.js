@@ -70,7 +70,6 @@ authRouter.post('/signup', async (req, res) => {
 
 authRouter.post("/login", async (req, res) => {
     try {
-      console.log(req.body, 'req.body')
         const { email, password } = req.body
         const user = await User.findOne({
             email
@@ -78,14 +77,13 @@ authRouter.post("/login", async (req, res) => {
         const hasPassword = user.password
         const isValidPassword = await bcrypt.compare(password, hasPassword)
         if (!isValidPassword) {
-            throw new Error("Invalid email or password!")
+            return res.status(404).json({ message: "Invalid email or password!" });
         }
         // 
-        const accessToken = user.generateAccessToken();//our defined methods can be accesed using the user instance 
+        const accessToken = user.generateAccessToken();
         const refreshToken = user.generateRefreshToken();
-        user.refreshToken = refreshToken; // Save refresh token in the database
-        
-        await user.save(); // Save user with new refresh token
+        user.refreshToken = refreshToken; 
+        await user.save(); 
         res.json({
             status: 'success',
             message: "Login Successful!",
@@ -93,7 +91,7 @@ authRouter.post("/login", async (req, res) => {
             refreshToken,
         });
     } catch (error) {
-        res.status(400).send("ERROR: " + error.message)
+        res.status(404).json({ message: "ERROR: " + error.message });
     }
 })
 
@@ -130,7 +128,7 @@ authRouter.post('/logout', userAuth, async (req, res) => {
 // Rotate Access Token using Refresh Token
 authRouter.post('/token/rotate', async (req, res) => {
     const { refreshToken } = req.body;
-
+    console.log(refreshToken, 'refreshToken')
     if (!refreshToken) {
         return res.status(400).json({ message: 'Refresh token is required' });
     }
@@ -138,10 +136,8 @@ authRouter.post('/token/rotate', async (req, res) => {
     try {
         // Verify the refresh token
         const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET_KEY);
-
         // Find the user by ID and ensure the refresh token matches the stored one
         const user = await User.findById(decoded._id);
-
         if (!user || user.refreshToken !== refreshToken) {
             return res.status(403).json({ message: 'Invalid refresh token' });
         }
@@ -220,16 +216,12 @@ authRouter.post('/forgot-password', async (req, res) => {
   
   // Reset Password Route
   authRouter.post('/reset-password', async (req, res) => {
-    console.log(req.body, 'req.body')
     const { token, email, password } = req.body;
-    // const { token, email, newPassword } = req.query;
-    console.log(token, email, password, 'data')
     try {
       const user = await User.findOne({
         email,
         resetPasswordExpires: { $gt: Date.now() }, // Check if the token is still valid
       });
-      console.log(user, 'user')
   
       if (!user) {
         return res.status(401).json({ status: 'error', message: 'Invalid or expired token' });
@@ -245,7 +237,6 @@ authRouter.post('/forgot-password', async (req, res) => {
       user.password = hashedPassword;
       user.resetPasswordToken = undefined; // Clear the token
       user.resetPasswordExpires = undefined; // Clear the expiration time
-      console.log(hashedPassword, 'hashedPassword')
       await user.save();
       res.json({ status: 'success',message: 'Password successfully reset' });
     } catch (error) {

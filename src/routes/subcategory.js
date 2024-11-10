@@ -50,7 +50,7 @@ subcategoryRouter.get("/:subcategoryId/products", async (req, res) => {
       }
   
       // Fetch all products associated with this subcategory
-      const products = await Product.find({ subcategory: subcategoryId }).populate("category", "name");
+      const products = await Product.find({ subcategory: subcategoryId, isActive: true }).populate("category", "name");
   
       res.status(200).json({
         name: subcategory.name,
@@ -61,10 +61,6 @@ subcategoryRouter.get("/:subcategoryId/products", async (req, res) => {
       res.status(500).json({ message: "Error fetching products for the subcategory", error });
     }
   });
-
-
-
-
 
 
 module.exports = subcategoryRouter;
