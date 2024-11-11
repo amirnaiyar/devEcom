@@ -1,5 +1,5 @@
 const express = require('express');
-const {Order} = require('../models/order');
+const { Order } = require('../models/order');
 const Coupon = require('../models/coupon');
 const Product = require('../models/product');
 const { userAuth } = require('../middleware/auth');
@@ -16,6 +16,7 @@ orderRouter.post('/create', userAuth, async (req, res) => {
     try {
         let discountAmount = 0;
         let finalAmount = totalPrice;
+        let appliedCoupon = null;
 
         // Apply coupon discount if couponCode is provided
         if (couponCode) {
@@ -38,6 +39,8 @@ orderRouter.post('/create', userAuth, async (req, res) => {
             }
 
             finalAmount = totalPrice - discountAmount;
+            // Set the applied coupon
+            appliedCoupon = coupon._id;
         }
 
         // Validate and update stock for each product with selected size/color options
@@ -80,6 +83,8 @@ orderRouter.post('/create', userAuth, async (req, res) => {
                 product: item.productId,
                 quantity: item.quantity,
                 price: product.sellingPrice || product.price, // Use selling price if available
+                color: item.color, // Include color in the order item
+                size: item.size,   // Include size in the order item
             };
         }));
 
@@ -92,7 +97,7 @@ orderRouter.post('/create', userAuth, async (req, res) => {
             finalAmount,
             paymentMethod,
             shippingAddress,
-            couponCode
+            coupon: appliedCoupon,
         });
 
         const savedOrder = await newOrder.save();
@@ -105,19 +110,37 @@ orderRouter.post('/create', userAuth, async (req, res) => {
 });
 
 // Get all orders of a user
-orderRouter.get('/', userAuth, async (req, res) => {
-    try {
-        const orders = await Order.find({ user: req.user.id }).populate('items.product', 'name price');
-        res.status(200).json(orders);
-    } catch (error) {
-        res.status(500).json({ message: 'Error fetching orders', error });
-    }
-});
+// orderRouter.get('/', userAuth, async (req, res) => {
+//     try {
+//         const orders = await Order.find({ user: req.user.id }).populate('items.product', 'name price');
+//         res.status(200).json(orders);
+//     } catch (error) {
+//         res.status(500).json({ message: 'Error fetching orders', error });
+//     }
+// });
 
 // Get a specific order by ID
-orderRouter.get('/:orderId', userAuth, async (req, res) => {
+orderRouter.get('/', userAuth, async (req, res) => {
     try {
-        const order = await Order.findById(req.params.orderId).populate('items.product', 'name price');
+        const order = await Order.findById(req.params.orderId)
+            .populate({
+                path: 'items.product',
+                model: 'Product',
+                populate: [
+                    {
+                        path: 'colors.color',
+                        model: 'Color',
+                        select: 'name displayName hexCode'
+                    },
+                    {
+                        path: 'sizes.size',
+                        model: 'Size',
+                        select: 'name displayName displayOrder'
+                    }
+                ]
+            })
+            .populate('coupon');
+
         if (!order) {
             return res.status(404).json({ message: 'Order not found' });
         }
@@ -158,24 +181,73 @@ orderRouter.put('/status/:orderId', userAuth, async (req, res) => {
     }
 });
 
-// Delete an order (admin/owner only)
-orderRouter.delete('/:orderId', userAuth, async (req, res) => {
+
+
+orderRouter.get("/my-orders", userAuth, async (req, res) => {
     try {
-        const order = await Order.findById(req.params.orderId);
-        if (!order) {
-            return res.status(404).json({ message: 'Order not found' });
+        // Find orders where the user ID matches the logged-in user's ID
+        const orders = await Order.find({ user: req.user.id })
+            .populate({
+                path: 'items.product',
+                model: 'Product',
+                populate: [
+                    {
+                        path: 'colors.color',
+                        model: 'Color',
+                        select: 'name displayName hexCode'
+                    },
+                    {
+                        path: 'sizes.size',
+                        model: 'Size',
+                        select: 'name displayName displayOrder'
+                    }
+                ]
+            })
+            .populate({
+                path: 'items.color', // Populate the specific color for this cart item
+                model: 'Color',
+                select: 'name displayName hexCode'
+            })
+            .populate({
+                path: 'items.size', // Populate the specific size for this cart item
+                model: 'Size',
+                select: 'name displayName displayOrder'
+            })
+            .populate('coupon')
+            .sort({ createdAt: -1 });  // sort by creation date, newest first
+        if (!orders || orders.length === 0) {
+            return res.status(404).json({ message: "No orders found for this user" });
         }
 
-        // Only the admin or the order owner can delete the order
-        if (order.user.toString() !== req.user.id && !req.user.isAdmin) {
-            return res.status(403).json({ message: 'Not authorized to delete this order' });
-        }
-
-        await order.remove();
-        res.status(200).json({ message: 'Order deleted successfully' });
+        res.json({
+            status: "success",
+            message: "User orders fetched successfully",
+            data: orders
+        });
     } catch (error) {
-        res.status(500).json({ message: 'Error deleting order', error });
+        console.error("Error fetching user orders:", error);
+        res.status(500).json({ message: "Server error fetching orders", error: error.message });
     }
 });
+
+// Delete an order (admin/owner only)
+// orderRouter.delete('/:orderId', userAuth, async (req, res) => {
+//     try {
+//         const order = await Order.findById(req.params.orderId);
+//         if (!order) {
+//             return res.status(404).json({ message: 'Order not found' });
+//         }
+
+//         // Only the admin or the order owner can delete the order
+//         if (order.user.toString() !== req.user.id && !req.user.isAdmin) {
+//             return res.status(403).json({ message: 'Not authorized to delete this order' });
+//         }
+
+//         await order.remove();
+//         res.status(200).json({ message: 'Order deleted successfully' });
+//     } catch (error) {
+//         res.status(500).json({ message: 'Error deleting order', error });
+//     }
+// });
 
 module.exports = orderRouter;
