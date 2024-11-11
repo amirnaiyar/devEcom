@@ -10,7 +10,8 @@ const addressSchema = new mongoose.Schema({
     state: { type: String, required: true },
     postalCode: { type: String, required: true },
     country: { type: String, required: true },
-}, { _id: false }); // No _id field for embedded sub-documents
+    isDefault: { type: Boolean, default: false }, // Mark an address as default
+}, { _id: true }); 
 
 
 const userSchema = new mongoose.Schema({
@@ -44,6 +45,20 @@ const userSchema = new mongoose.Schema({
         timestamps: true
     },
 )
+
+// Method to set a default address
+userSchema.methods.setDefaultAddress = async function(addressId) {
+    // Set all addresses' isDefault to false
+    this.addresses.forEach(address => {
+        if (address._id.toString() === addressId) {
+            address.isDefault = true;
+        } else {
+            address.isDefault = false;
+        }
+    });
+    // Save the changes
+    return this.save();
+};
 
 userSchema.methods.generateAccessToken = function () { 
     return jwt.sign( { _id: this._id,

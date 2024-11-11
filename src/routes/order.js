@@ -1,30 +1,106 @@
 const express = require('express');
 const {Order} = require('../models/order');
+const Coupon = require('../models/coupon');
+const Product = require('../models/product');
 const { userAuth } = require('../middleware/auth');
 const orderRouter = express.Router();
 
 // Create a new order
 orderRouter.post('/create', userAuth, async (req, res) => {
-    const { items, totalPrice, paymentMethod, shippingAddress } = req.body;
+    const { items, totalPrice, paymentMethod, shippingAddress, couponCode } = req.body;
 
     if (!items || items.length === 0) {
         return res.status(400).json({ message: 'No order items found' });
     }
 
     try {
+        let discountAmount = 0;
+        let finalAmount = totalPrice;
+
+        // Apply coupon discount if couponCode is provided
+        if (couponCode) {
+            const coupon = await Coupon.findOne({ code: couponCode, isActive: true });
+            if (!coupon) {
+                return res.status(400).json({ message: 'Invalid or inactive coupon code' });
+            }
+            if (coupon.expirationDate && new Date() > coupon.expirationDate) {
+                return res.status(400).json({ message: 'Coupon code has expired' });
+            }
+            if (totalPrice < coupon.minimumOrderValue) {
+                return res.status(400).json({ message: `Minimum order value for coupon is ${coupon.minimumOrderValue}` });
+            }
+
+            // Calculate discount based on type
+            if (coupon.discountType === 'percentage') {
+                discountAmount = (totalPrice * coupon.discountValue) / 100;
+            } else if (coupon.discountType === 'flat') {
+                discountAmount = coupon.discountValue;
+            }
+
+            finalAmount = totalPrice - discountAmount;
+        }
+
+        // Validate and update stock for each product with selected size/color options
+        const validatedItems = await Promise.all(items.map(async (item) => {
+            const product = await Product.findById(item.productId);
+            if (!product || !product.isActive) {
+                throw new Error(`Product with ID ${item.productId} is not available`);
+            }
+
+            // Check if size option is selected and has stock
+            if (item.size) {
+                const sizeOption = product.sizes.find((s) => s.size.equals(item.size));
+                if (!sizeOption || sizeOption.stock < item.quantity) {
+                    throw new Error(`Insufficient stock for size selection of product ${product.name}`);
+                }
+                // Update stock
+                sizeOption.stock -= item.quantity;
+            }
+
+            // Check if color option is selected and has stock
+            if (item.color) {
+                const colorOption = product.colors.find((c) => c.color.equals(item.color));
+                if (!colorOption || colorOption.stock < item.quantity) {
+                    throw new Error(`Insufficient stock for color selection of product ${product.name}`);
+                }
+                // Update stock
+                colorOption.stock -= item.quantity;
+            }
+
+            // Decrease product stock if no specific size/color options
+            if (!item.size && !item.color) {
+                if (product.stock < item.quantity) {
+                    throw new Error(`Insufficient stock for product ${product.name}`);
+                }
+                product.stock -= item.quantity;
+            }
+
+            await product.save();
+            return {
+                product: item.productId,
+                quantity: item.quantity,
+                price: product.sellingPrice || product.price, // Use selling price if available
+            };
+        }));
+
+        // Create and save the new order
         const newOrder = new Order({
             user: req.user.id,
-            items,
+            items: validatedItems,
             totalPrice,
+            discountAmount,
+            finalAmount,
             paymentMethod,
             shippingAddress,
+            couponCode
         });
 
         const savedOrder = await newOrder.save();
         res.status(201).json(savedOrder);
+
     } catch (error) {
-        console.log(error.message);
-        res.status(500).json({ message: 'Error creating order', error });
+        console.error(error.message);
+        res.status(500).json({ message: 'Error creating order', error: error.message });
     }
 });
 
