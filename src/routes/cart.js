@@ -116,7 +116,6 @@ cartRouter.post('/add', userAuth, async (req, res) => {
 // Remove item from cart
 cartRouter.delete('/remove/:productId', userAuth, async (req, res) => {
     const { productId } = req.params;
-    console.log(productId, 'Removed productid');
     try {
         const cart = await Cart.findOne({ user: req.user._id });
         if (!cart) return res.json({ cart: [], message: 'Cart not found' });
@@ -127,7 +126,41 @@ cartRouter.delete('/remove/:productId', userAuth, async (req, res) => {
         if (!cartTotal) {
             return res.status(200).json({ message: 'Cart is empty and has been deleted' });
         }
-        res.status(200).json(cart);
+         // Re-fetch the updated cart with populated fields
+         const updatedCart = await Cart.findOne({ user: req.user._id })
+         .populate({
+             path: 'items.product',
+             model: 'Product',
+             populate: [
+                 {
+                     path: 'colors.color',
+                     model: 'Color',
+                     select: 'name displayName hexCode'
+                 },
+                 {
+                     path: 'sizes.size',
+                     model: 'Size',
+                     select: 'name displayName displayOrder'
+                 }
+             ]
+         })
+         .populate({
+             path: 'items.color', // Populate the specific color for this cart item
+             model: 'Color',
+             select: 'name displayName hexCode'
+         })
+         .populate({
+             path: 'items.size', // Populate the specific size for this cart item
+             model: 'Size',
+             select: 'name displayName displayOrder'
+         })
+         .populate({
+             path: 'appliedCoupon', // Populate the applied coupon
+             model: 'Coupon',
+             select: 'code discountType discountValue expirationDate isActive'
+         });
+
+        res.status(200).json({cart: updatedCart});
     } catch (error) {
         console.log(error)
         res.status(400).json({ message: 'Error removing item from cart', error });
@@ -159,8 +192,41 @@ cartRouter.put('/update/:productId', userAuth, async (req, res) => {
         // Recalculate the total price after updating the quantity
         await cart.calculateTotalPrice();
         await cart.save();
+        // Re-fetch the updated cart with populated fields
+        const updatedCart = await Cart.findOne({ user: req.user._id })
+            .populate({
+                path: 'items.product',
+                model: 'Product',
+                populate: [
+                    {
+                        path: 'colors.color',
+                        model: 'Color',
+                        select: 'name displayName hexCode'
+                    },
+                    {
+                        path: 'sizes.size',
+                        model: 'Size',
+                        select: 'name displayName displayOrder'
+                    }
+                ]
+            })
+            .populate({
+                path: 'items.color', // Populate the specific color for this cart item
+                model: 'Color',
+                select: 'name displayName hexCode'
+            })
+            .populate({
+                path: 'items.size', // Populate the specific size for this cart item
+                model: 'Size',
+                select: 'name displayName displayOrder'
+            })
+            .populate({
+                path: 'appliedCoupon', // Populate the applied coupon
+                model: 'Coupon',
+                select: 'code discountType discountValue expirationDate isActive'
+            });
 
-        res.status(200).json(cart);
+        res.status(200).json({cart: updatedCart});
     } catch (error) {
         console.error(error);
         res.status(400).json({ message: 'Error updating cart item', error });

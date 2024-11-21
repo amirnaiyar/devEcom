@@ -1,6 +1,8 @@
 const express = require('express');
 const Product = require('../models/product');
+const User = require("../models/user")
 const productRouter = express.Router();
+const { userAuth } = require('../middleware/auth');
 
 // Create a new product
 productRouter.post('/', async (req, res) => {
@@ -35,7 +37,27 @@ productRouter.post('/batch', async (req, res) => {
 });
 
 
-productRouter.get('/new', async (req, res) => {
+// productRouter.get('/new', async (req, res) => {
+//     try {
+//         // Get the limit from the query parameters or set a default limit
+//         const limit = parseInt(req.query.limit) || 10;
+
+//         // Fetch products sorted by creation date in descending order
+//         const products = await Product.find({ isActive: true }) // Only active products
+//             .sort({ createdAt: -1 }) // Sort by newest first
+//             .limit(limit) // Limit the number of products
+//             .populate('category subcategory') // Populate category and subcategory references
+//             .populate('sizes.size') // Populate size references if needed
+//             .populate('colors.color'); // Populate color references if needed
+
+//         res.status(200).json(products);
+//     } catch (error) {
+//         console.error("Error fetching new products:", error);
+//         res.status(500).json({ message: "Error fetching new products", error });
+//     }
+// });
+
+productRouter.get('/new', userAuth, async (req, res) => {
     try {
         // Get the limit from the query parameters or set a default limit
         const limit = parseInt(req.query.limit) || 10;
@@ -47,8 +69,23 @@ productRouter.get('/new', async (req, res) => {
             .populate('category subcategory') // Populate category and subcategory references
             .populate('sizes.size') // Populate size references if needed
             .populate('colors.color'); // Populate color references if needed
+        let userWishlist = [];
 
-        res.status(200).json(products);
+        // If the user is authenticated, get their wishlist
+        if (req.user) {
+            const user = await User.findById(req.user._id).select('wishlist');
+            if (user) {
+                userWishlist = user.wishlist.map((item) => item.toString());
+            }
+        }
+
+        // Add the isWishlisted flag to each product
+        const updatedProducts = products.map((product) => ({
+            ...product.toObject(), // Convert Mongoose document to plain object
+            isWishlisted: userWishlist.includes(product._id.toString()),
+        }));
+
+        res.status(200).json(updatedProducts);
     } catch (error) {
         console.error("Error fetching new products:", error);
         res.status(500).json({ message: "Error fetching new products", error });
@@ -56,7 +93,7 @@ productRouter.get('/new', async (req, res) => {
 });
 
 
-productRouter.get('/sale', async (req, res) => {
+productRouter.get('/sale', userAuth, async (req, res) => {
     try {
         // Get the limit from the query parameters or set a default limit
         const limit = parseInt(req.query.limit) || 10;
@@ -71,15 +108,30 @@ productRouter.get('/sale', async (req, res) => {
             .populate('category subcategory') // Populate category and subcategory references
             .populate('sizes.size') // Populate size references if needed
             .populate('colors.color'); // Populate color references if needed
+            let userWishlist = [];
 
-        res.status(200).json(saleProducts);
+        // If the user is authenticated, get their wishlist
+        if (req.user) {
+            const user = await User.findById(req.user._id).select('wishlist');
+            if (user) {
+                userWishlist = user.wishlist.map((item) => item.toString());
+            }
+        }
+
+        // Add the isWishlisted flag to each product
+        const updatedProducts = saleProducts.map((product) => ({
+            ...product.toObject(), // Convert Mongoose document to plain object
+            isWishlisted: userWishlist.includes(product._id.toString()),
+        }));
+
+        res.status(200).json(updatedProducts);
     } catch (error) {
         console.error("Error fetching sale products:", error);
         res.status(500).json({ message: "Error fetching sale products", error });
     }
 });
 
-productRouter.get('/:id', async (req, res) => {
+productRouter.get('/:id', userAuth, async (req, res) => {
     try {
         const id = req.params.id;
         const product = await Product.findById(id)
@@ -100,8 +152,26 @@ productRouter.get('/:id', async (req, res) => {
         if(!product.stock || product.stock === 0){
             return res.status(400).json({ message: 'No stock available for this product!' });
         }
-        if(product){
-            res.status(201).json(product);
+                // If the user is authenticated, get their wishlist
+                if (req.user) {
+                    const user = await User.findById(req.user._id).select('wishlist');
+                    if (user) {
+                        userWishlist = user.wishlist.map((item) => item.toString());
+                    }
+                }
+        
+                // Add the isWishlisted flag to each product
+                // const updatedProducts = saleProducts.map((product) => ({
+                //     ...product.toObject(), // Convert Mongoose document to plain object
+                //     isWishlisted: userWishlist.includes(product._id.toString()),
+                // }));
+        const isWishlisted = userWishlist.includes(product._id.toString())
+        const productWithWishlistInfo = {
+            ...product.toObject(), // Convert Mongoose document to plain object (if needed)
+            isWishlisted, // Add the isWishlisted flag
+        };
+        if(productWithWishlistInfo){
+            res.status(201).json({ data: productWithWishlistInfo });
         } else {
             res.status(404).json({ message: 'Product not found' });
         }

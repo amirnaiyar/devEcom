@@ -2,6 +2,8 @@ const express = require('express');
 const Subcategory = require('../models/subcategory');
 const Category = require('../models/category');
 const Product = require('../models/product');
+const User = require("../models/user")
+const { userAuth } = require('../middleware/auth');
 const subcategoryRouter = express.Router();
 
 // Create a new category
@@ -39,7 +41,7 @@ subcategoryRouter.post("/", async (req, res) => {
   });
 
 // Get all categories
-subcategoryRouter.get("/:subcategoryId/products", async (req, res) => {
+subcategoryRouter.get("/:subcategoryId/products", userAuth, async (req, res) => {
     const subcategoryId = req.params.subcategoryId;
   
     try {
@@ -51,10 +53,22 @@ subcategoryRouter.get("/:subcategoryId/products", async (req, res) => {
   
       // Fetch all products associated with this subcategory
       const products = await Product.find({ subcategory: subcategoryId, isActive: true }).populate("category", "name");
-  
+      
+      // If the user is authenticated, get their wishlist
+      if (req.user) {
+        const user = await User.findById(req.user._id).select('wishlist');
+        if (user) {
+            userWishlist = user.wishlist.map((item) => item.toString());
+        }
+    }
+      // Add the isWishlisted flag to each product
+      const updatedProducts = products.map((product) => ({
+        ...product.toObject(), // Convert Mongoose document to plain object
+        isWishlisted: userWishlist.includes(product._id.toString()),
+    }));
       res.status(200).json({
         name: subcategory.name,
-        products,
+        products: updatedProducts,
       });
     } catch (error) {
       console.log(error);
