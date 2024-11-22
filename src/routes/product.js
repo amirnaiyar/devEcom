@@ -181,6 +181,41 @@ productRouter.get('/:id', userAuth, async (req, res) => {
     }
 });
 
+productRouter.put("/:productId", userAuth, async (req, res) => {
+    const productId = req.params.productId;
+    const updates = req.body; // Fields to update
+
+    try {
+        // Validate the product exists
+        const product = await Product.findById(productId);
+        if (!product) {
+            return res.status(404).json({ message: "Product not found" });
+        }
+
+        // Validate specific fields if needed
+        if (updates.price && updates.sellingPrice && updates.sellingPrice > updates.price) {
+            return res.status(400).json({ message: "Selling price cannot be greater than the original price" });
+        }
+
+        // Update the product
+        const updatedProduct = await Product.findByIdAndUpdate(
+            productId,
+            { $set: updates },
+            { new: true, runValidators: true } // Return the updated document and run validators
+        ).populate("category", "name").populate("subcategory", "name");
+
+        res.status(200).json({
+            message: "Product updated successfully",
+            product: updatedProduct,
+        });
+    } catch (error) {
+        console.error("Error updating product:", error);
+        res.status(500).json({
+            message: "Error updating the product",
+            error,
+        });
+    }
+});
 
 
 
