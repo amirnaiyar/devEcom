@@ -4,6 +4,7 @@ const Category = require('../models/category');
 const Product = require('../models/product');
 const User = require("../models/user")
 const { userAuth } = require('../middleware/auth');
+const { default: mongoose } = require('mongoose');
 const subcategoryRouter = express.Router();
 
 // Create a new category
@@ -74,17 +75,16 @@ subcategoryRouter.get("/:subcategoryId/products", userAuth, async (req, res) => 
               break;
       }
 
-      // Fetch all products associated with this subcategory
-      const products = await Product.find({ 
-          subcategory: subcategoryId, 
-          isActive: true 
-      })
-      .populate("category", "name")
-      .populate("sizes.size", "size") // Populate size details if needed
-      .populate("colors.color", "name") // Populate color details if needed
-      .populate("reviews", "rating") // Populate reviews if needed
-      .sort(sortCriteria);
-    
+// Fetch all products associated with this subcategory
+      const products = await Product.find({
+              subcategory: subcategoryId,
+              isActive: true
+          })
+              .populate("category", "name")
+              .populate("sizes.size", "size")
+              .populate("colors.color", "name")
+              .populate("reviews", "rating")
+              .sort(sortCriteria)
       // If the user is authenticated, get their wishlist
       let userWishlist = [];
       if (req.user) {
@@ -96,20 +96,227 @@ subcategoryRouter.get("/:subcategoryId/products", userAuth, async (req, res) => 
 
       // Add the isWishlisted flag and calculated fields to each product
       const updatedProducts = products.map((product) => ({
-          ...product.toObject(), // Convert Mongoose document to plain object
+          ...product.toObject(),
           isWishlisted: userWishlist.includes(product._id.toString()),
-          hasDiscount: product.sellingPrice < product.price // Calculate if the product has a discount
+          hasDiscount: product.sellingPrice < product.price
       }));
 
       res.status(200).json({
           name: subcategory.name,
-          products: updatedProducts,
+          products: updatedProducts
       });
   } catch (error) {
-      console.log(error);
+      console.error("Error fetching products for the subcategory:", error);
       res.status(500).json({ message: "Error fetching products for the subcategory", error });
   }
 });
+
+subcategoryRouter.get("/:subcategoryId/products/facets", userAuth, async (req, res) => {
+  try {
+      const subcategoryId = req.params.subcategoryId;
+
+      if (!mongoose.Types.ObjectId.isValid(subcategoryId)) {
+          return res.status(400).json({ message: "Invalid subcategoryId" });
+      }
+
+      const subcategoryObjectId = new mongoose.Types.ObjectId(subcategoryId); // Convert to ObjectId
+
+      const facets = await Product.aggregate([
+          { $match: { subcategory: subcategoryObjectId, isActive: true } },
+          {
+              $facet: {
+                  colors: [
+                      { $unwind: { path: "$colors" } },
+                      {
+                          $lookup: {
+                              from: "colors", // Replace with your actual collection name for colors
+                              localField: "colors.color",
+                              foreignField: "_id",
+                              as: "colorDetails"
+                          }
+                      },
+                      { $unwind: { path: "$colorDetails" } },
+                      {
+                          $group: {
+                              _id: "$colorDetails._id",
+                              name: { $first: "$colorDetails.name" },
+                              hexCode: { $first: "$colorDetails.hexCode" },
+                              count: { $sum: 1 }
+                          }
+                      }
+                  ],
+                  sizes: [
+                      { $unwind: { path: "$sizes" } },
+                      {
+                          $lookup: {
+                              from: "sizes", // Replace with your actual collection name for sizes
+                              localField: "sizes.size",
+                              foreignField: "_id",
+                              as: "sizeDetails"
+                          }
+                      },
+                      { $unwind: { path: "$sizeDetails" } },
+                      {
+                          $group: {
+                              _id: "$sizeDetails._id",
+                              displayName: { $first: "$sizeDetails.displayName" },
+                              count: { $sum: 1 }
+                          }
+                      }
+                  ],
+                  brands: [
+                      { $group: { _id: "$brand", name: {$first: "$brand"}, count: { $sum: 1 } } }
+                  ],
+                  priceRange: [
+                      {
+                          $group: {
+                              _id: null,
+                              minPrice: { $min: "$sellingPrice" },
+                              maxPrice: { $max: "$sellingPrice" }
+                          }
+                      }
+                  ]
+              }
+          }
+      ]);
+
+      res.status(200).json(facets[0]);
+  } catch (error) {
+      console.error("Error fetching facets:", error);
+      res.status(500).json({ message: "Error fetching facets", error });
+  }
+});
+
+
+subcategoryRouter.get('/:subcategoryId/filters', async (req, res) => {
+  try {
+      const subcategoryId = req.params.subcategoryId;
+      const { minPrice, maxPrice, brands, colorIds, sizeIds } = req.query;
+
+      if (!subcategoryId) {
+          return res.status(400).json({
+              success: false,
+              message: 'Subcategory ID is required.'
+          });
+      }
+
+      // Initialize query with the mandatory subcategory filter
+      const query = { isActive: true, subcategory: subcategoryId };
+
+      // Track applied filters
+      const appliedFilters = {};
+
+      if (minPrice || maxPrice) {
+          query.price = {};
+          if (minPrice) {
+              query.price.$gte = Number(minPrice);
+              appliedFilters.minPrice = Number(minPrice);
+          }
+          if (maxPrice) {
+              query.price.$lte = Number(maxPrice);
+              appliedFilters.maxPrice = Number(maxPrice);
+          }
+      }
+
+      if (brands) {
+          query.brand = { $in: brands.split(',') };
+          appliedFilters.brands = brands.split(',');
+      }
+
+      if (colorIds) {
+          query['colors.color'] = { $in: colorIds.split(',') };
+          appliedFilters.colorIds = colorIds.split(',');
+      }
+
+      if (sizeIds) {
+          query['sizes.size'] = { $in: sizeIds.split(',') };
+          appliedFilters.sizeIds = sizeIds.split(',');
+      }
+
+      // Fetch filtered products
+      const products = await Product.find(query)
+          .populate('sizes.size', 'name')
+          .populate('colors.color', 'name')
+          .select('name price brand colors sizes images');
+
+      // Fetch facets
+      const facetData = await Product.aggregate([
+          { $match: { subcategory: subcategoryId, isActive: true } },
+          {
+              $facet: {
+                  colors: [
+                      { $unwind: "$colors" },
+                      { $group: { _id: "$colors.color", count: { $sum: 1 } } },
+                      { $lookup: { from: "colors", localField: "_id", foreignField: "_id", as: "colorDetails" } },
+                      { $unwind: "$colorDetails" },
+                      {
+                          $project: {
+                              _id: 1,
+                              count: 1,
+                              name: "$colorDetails.name",
+                              hexcode: "$colorDetails.hexcode"
+                          }
+                      }
+                  ],
+                  sizes: [
+                      { $unwind: "$sizes" },
+                      { $group: { _id: "$sizes.size", count: { $sum: 1 } } },
+                      { $lookup: { from: "sizes", localField: "_id", foreignField: "_id", as: "sizeDetails" } },
+                      { $unwind: "$sizeDetails" },
+                      {
+                          $project: {
+                              _id: 1,
+                              count: 1,
+                              name: "$sizeDetails.name"
+                          }
+                      }
+                  ],
+                  brands: [
+                      { $group: { _id: "$brand", count: { $sum: 1 } } }
+                  ],
+                  priceRange: [
+                      { $group: { _id: null, minPrice: { $min: "$price" }, maxPrice: { $max: "$price" } } }
+                  ]
+              }
+          }
+      ]);
+
+      // Add `isApplied` key to facet data
+      const facets = facetData[0];
+      facets.colors = facets.colors.map(color => ({
+          ...color,
+          isApplied: appliedFilters.colorIds?.includes(color._id.toString()) || false
+      }));
+      facets.sizes = facets.sizes.map(size => ({
+          ...size,
+          isApplied: appliedFilters.sizeIds?.includes(size._id.toString()) || false
+      }));
+      facets.brands = facets.brands.map(brand => ({
+          ...brand,
+          isApplied: appliedFilters.brands?.includes(brand._id) || false
+      }));
+      facets.priceRange = {
+          ...facets.priceRange[0],
+          isApplied: !!(minPrice || maxPrice)
+      };
+
+      res.status(200).json({
+          success: true,
+          appliedFilters,
+          facets,
+          products
+      });
+  } catch (error) {
+      console.error('Error fetching filters:', error);
+      res.status(500).json({
+          success: false,
+          message: 'Error fetching filters',
+          error
+      });
+  }
+});
+
+
 
 
 module.exports = subcategoryRouter;
