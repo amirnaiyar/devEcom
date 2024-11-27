@@ -149,53 +149,66 @@ cartRouter.post('/add', userAuth, async (req, res) => {
 // Remove item from cart
 cartRouter.delete('/remove/:productId', userAuth, async (req, res) => {
     const { productId } = req.params;
+    const { sizeId, colorId } = req.query; // Accept `sizeId` and `colorId` from query params
     try {
         const cart = await Cart.findOne({ user: req.user._id });
         if (!cart) return res.json({ cart: [], message: 'Cart not found' });
 
-        // Remove item from cart
-        cart.items = cart.items.filter(item => item.product.toString() !== productId);
+        // Remove the specific item from the cart based on `productId`, `sizeId`, and `colorId`
+        cart.items = cart.items.filter(item => {
+            const matchesProduct = item.product.toString() === productId;
+            const matchesSize = sizeId ? item.size?.toString() === sizeId : true;
+            const matchesColor = colorId ? item.color?.toString() === colorId : true;
+            return !(matchesProduct && matchesSize && matchesColor);
+        });
+
+        // Recalculate the total price
         const cartTotal = await cart.calculateTotalPrice();
+
+        // Save the updated cart
+        await cart.save();
+
         if (!cartTotal) {
             return res.status(200).json({ message: 'Cart is empty and has been deleted' });
         }
-         // Re-fetch the updated cart with populated fields
-         const updatedCart = await Cart.findOne({ user: req.user._id })
-         .populate({
-             path: 'items.product',
-             model: 'Product',
-             populate: [
-                 {
-                     path: 'colors.color',
-                     model: 'Color',
-                     select: 'name displayName hexCode'
-                 },
-                 {
-                     path: 'sizes.size',
-                     model: 'Size',
-                     select: 'name displayName displayOrder'
-                 }
-             ]
-         })
-         .populate({
-             path: 'items.color', // Populate the specific color for this cart item
-             model: 'Color',
-             select: 'name displayName hexCode'
-         })
-         .populate({
-             path: 'items.size', // Populate the specific size for this cart item
-             model: 'Size',
-             select: 'name displayName displayOrder'
-         })
-         .populate({
-             path: 'appliedCoupon', // Populate the applied coupon
-             model: 'Coupon',
-             select: 'code discountType discountValue expirationDate isActive'
-         });
 
-        res.status(200).json({cart: updatedCart});
+        // Re-fetch the updated cart with populated fields
+        const updatedCart = await Cart.findOne({ user: req.user._id })
+            .populate({
+                path: 'items.product',
+                model: 'Product',
+                populate: [
+                    {
+                        path: 'colors.color',
+                        model: 'Color',
+                        select: 'name displayName hexCode'
+                    },
+                    {
+                        path: 'sizes.size',
+                        model: 'Size',
+                        select: 'name displayName displayOrder'
+                    }
+                ]
+            })
+            .populate({
+                path: 'items.color',
+                model: 'Color',
+                select: 'name displayName hexCode'
+            })
+            .populate({
+                path: 'items.size',
+                model: 'Size',
+                select: 'name displayName displayOrder'
+            })
+            .populate({
+                path: 'appliedCoupon',
+                model: 'Coupon',
+                select: 'code discountType discountValue expirationDate isActive'
+            });
+
+        res.status(200).json({ cart: updatedCart });
     } catch (error) {
-        console.log(error)
+        console.error('Error removing item from cart:', error);
         res.status(400).json({ message: 'Error removing item from cart', error });
     }
 });
