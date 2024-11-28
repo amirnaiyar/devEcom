@@ -3,10 +3,12 @@ const cartRouter = express.Router()
 const { userAuth } = require("../middleware/auth")
 const {Cart} = require('../models/cart')
 const Product = require('../models/product')
+const User = require("../models/user")
 
 // Get cart for the authenticated user
 cartRouter.get('/', userAuth, async (req, res) => {
     try {
+        // Fetch the cart for the authenticated user
         const cart = await Cart.findOne({ user: req.user._id })
             .populate({
                 path: 'items.product',
@@ -40,18 +42,41 @@ cartRouter.get('/', userAuth, async (req, res) => {
                 select: 'code discountType discountValue expirationDate isActive'
             });
 
-            if (!cart) return res.json({ cart: [], message: 'Cart not found' });
+        if (!cart) {
+            return res.status(404).json({ cart: [], message: 'Cart not found' });
+        }
 
-        res.status(200).json(cart);
+        // Fetch user's wishlist
+        const user = await User.findById(req.user._id).select('wishlist');
+        const wishlistIds = user?.wishlist.map(item => item.toString()) || [];
+
+        // Add `isWishlisted` property to each cart item's product
+        const updatedCartItems = cart.items.map(item => {
+            const product = item.product;
+            const isWishlisted = wishlistIds.includes(product._id.toString());
+            return {
+                ...item.toObject(),
+                product: {
+                    ...product.toObject(),
+                    isWishlisted // Add the wishlist flag
+                }
+            };
+        });
+
+        // Return the updated cart with wishlist data
+        res.status(200).json({
+            success: true,
+            cart: {
+                ...cart.toObject(),
+                items: updatedCartItems
+            }
+        });
     } catch (error) {
         console.error('Error fetching cart:', error);
         res.status(400).json({ message: 'Error fetching cart', error });
     }
 });
 
-
-
-// Add item to cart or update quantity if the item already exists
 cartRouter.post('/add', userAuth, async (req, res) => {
     const { productId, quantity, sizeId, colorId } = req.body;
 

@@ -217,6 +217,59 @@ productRouter.put("/:productId", userAuth, async (req, res) => {
     }
 });
 
+productRouter.get('/:productId/similar',userAuth, async (req, res) => {
+    const { productId } = req.params;
+
+    try {
+        // Fetch the base product to find its attributes (e.g., categories, brand, etc.)
+        const product = await Product.findById(productId)
+            .select('categories subcategories brand')
+            .lean();
+
+        if (!product) {
+            return res.status(404).json({ success: false, message: 'Product not found' });
+        }
+
+        // Build the query for similar products
+        const query = {
+            _id: { $ne: productId }, // Exclude the current product
+            isActive: true, // Ensure only active products are fetched
+            $or: [
+                { categories: { $in: Array.isArray(product.categories) ? product.categories : [product.categories] } },
+                { subcategories: { $in:  Array.isArray(product.subcategories) ? product.subcategories : [product.subcategories]  } },
+                { brand: product.brand }
+            ]
+        };
+
+        // Fetch similar products
+        const similarProducts = await Product.find(query)
+            .populate("category", "name")
+            .populate("sizes.size", "size")
+            .populate("colors.color", "name")
+            .populate("reviews", "rating")
+            .limit(10)
+
+        
+        let userWishlist = [];
+        if (req.user) {
+            const user = await User.findById(req.user._id).select("wishlist");
+            if (user) {
+                userWishlist = user.wishlist.map((item) => item.toString());
+            }
+        }
+        // Add the isWishlisted flag and calculated fields to each product
+        const updatedSimilarProducts = similarProducts.map((product) => ({
+            ...product?.toObject(),
+            isWishlisted: userWishlist.includes(product._id.toString()),
+            hasDiscount: product.sellingPrice < product.price
+        }));
+
+        res.status(200).json({ success: true, similarProducts: updatedSimilarProducts });
+    } catch (error) {
+        console.error('Error fetching similar products:', error);
+        res.status(500).json({ success: false, message: 'Error fetching similar products', error });
+    }
+});
 
 
 module.exports = productRouter
