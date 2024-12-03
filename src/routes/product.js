@@ -271,7 +271,7 @@ productRouter.get('/:productId/similar',userAuth, async (req, res) => {
     }
 });
 
-router.post('/rate', userAuth, async (req, res) => {
+productRouter.post('/rate', userAuth, async (req, res) => {
     try {
         const { productId, rating, comment } = req.body;
 
