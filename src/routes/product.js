@@ -101,14 +101,14 @@ productRouter.get('/sale', userAuth, async (req, res) => {
         // Fetch sale products (where sellingPrice is less than the original price)
         const saleProducts = await Product.find({
                 isActive: true, // Only active products
-                sellingPrice: { $lt: "$price" } // Products on sale
+                $expr: { $lt: ["$sellingPrice", "$price"] } // Compare sellingPrice and price
             })
             .sort({ createdAt: -1 }) // Sort by newest first
             .limit(limit) // Limit the number of sale products
             .populate('category subcategory') // Populate category and subcategory references
             .populate('sizes.size') // Populate size references if needed
             .populate('colors.color'); // Populate color references if needed
-            let userWishlist = [];
+        let userWishlist = [];
 
         // If the user is authenticated, get their wishlist
         if (req.user) {
@@ -268,6 +268,60 @@ productRouter.get('/:productId/similar',userAuth, async (req, res) => {
     } catch (error) {
         console.error('Error fetching similar products:', error);
         res.status(500).json({ success: false, message: 'Error fetching similar products', error });
+    }
+});
+
+router.post('/rate', userAuth, async (req, res) => {
+    try {
+        const { productId, rating, comment } = req.body;
+
+        // Validate input
+        if (!productId || !rating) {
+            return res.status(400).json({ message: 'Product ID and rating are required.' });
+        }
+        if (rating < 1 || rating > 5) {
+            return res.status(400).json({ message: 'Rating must be between 1 and 5.' });
+        }
+
+        // Check if the product exists
+        const product = await Product.findById(productId);
+        if (!product) {
+            return res.status(404).json({ message: 'Product not found.' });
+        }
+
+        // Check if the user has already reviewed the product
+        const existingReview = await Review.findOne({ user: req.user._id, product: productId });
+        if (existingReview) {
+            // Update the existing review
+            existingReview.rating = rating;
+            existingReview.comment = comment || existingReview.comment;
+            await existingReview.save();
+        } else {
+            // Create a new review
+            const review = new Review({
+                user: req.user._id,
+                product: productId,
+                rating,
+                comment
+            });
+            await review.save();
+
+            // Add the review to the product
+            product.reviews.push(review._id);
+        }
+
+        // Recalculate the average rating
+        const allReviews = await Review.find({ product: productId });
+        const avgRating = allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length;
+
+        // Update the product's average rating
+        product.rating = avgRating;
+        await product.save();
+
+        res.status(200).json({ message: 'Rating submitted successfully.', product });
+    } catch (error) {
+        console.error('Error rating product:', error);
+        res.status(500).json({ message: 'Failed to rate product.', error });
     }
 });
 
