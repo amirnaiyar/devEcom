@@ -128,7 +128,6 @@ authRouter.post('/logout', userAuth, async (req, res) => {
 // Rotate Access Token using Refresh Token
 authRouter.post('/token/rotate', async (req, res) => {
     const { refreshToken } = req.body;
-    console.log(refreshToken, 'refreshToken')
     if (!refreshToken) {
         return res.status(400).json({ message: 'Refresh token is required' });
     }

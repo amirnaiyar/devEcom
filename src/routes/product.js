@@ -1,8 +1,35 @@
 const express = require('express');
 const Product = require('../models/product');
 const User = require("../models/user")
+const Review = require('../models/review');
 const productRouter = express.Router();
 const { userAuth } = require('../middleware/auth');
+
+const hasUserRatedProduct = async (userId, productId) => {
+    try {
+        // Check for an existing review by the user for the specific product
+        const review = await Review.findOne({ user: userId, product: productId });
+
+        if (review) {
+            // User has rated the product
+            return {
+                hasRated: true,
+                rating: review.rating,
+                comment: review.comment,
+            };
+        } else {
+            // User has not rated the product
+            return {
+                hasRated: false,
+                rating: null,
+                comment: null,
+            };
+        }
+    } catch (error) {
+        console.error('Error checking if user has rated product:', error);
+        throw error;
+    }
+};
 
 // Create a new product
 productRouter.post('/', async (req, res) => {
@@ -37,25 +64,6 @@ productRouter.post('/batch', async (req, res) => {
 });
 
 
-// productRouter.get('/new', async (req, res) => {
-//     try {
-//         // Get the limit from the query parameters or set a default limit
-//         const limit = parseInt(req.query.limit) || 10;
-
-//         // Fetch products sorted by creation date in descending order
-//         const products = await Product.find({ isActive: true }) // Only active products
-//             .sort({ createdAt: -1 }) // Sort by newest first
-//             .limit(limit) // Limit the number of products
-//             .populate('category subcategory') // Populate category and subcategory references
-//             .populate('sizes.size') // Populate size references if needed
-//             .populate('colors.color'); // Populate color references if needed
-
-//         res.status(200).json(products);
-//     } catch (error) {
-//         console.error("Error fetching new products:", error);
-//         res.status(500).json({ message: "Error fetching new products", error });
-//     }
-// });
 
 productRouter.get('/new', userAuth, async (req, res) => {
     try {
@@ -133,53 +141,75 @@ productRouter.get('/sale', userAuth, async (req, res) => {
 
 productRouter.get('/:id', userAuth, async (req, res) => {
     try {
-        const id = req.params.id;
-        const product = await Product.findById(id)
-        .populate({
-            path: 'colors.color', // Populate the color field in colors array
-            model: 'Color', // Reference to the Color collection
-            select: 'name displayName hexCode' // Select fields to include
-        })
-        .populate({
-            path: 'sizes.size', // Populate the size field in sizes array
-            model: 'Size', // Reference to the Size collection
-            select: 'name displayName displayOrder' // Select fields to include
-        });
-        // check product is Active
-        if(!product.isActive){
+        const productId = req.params.id;
+        const userId = req.user ? req.user._id : null;
+
+        // Fetch the product details with colors and sizes populated
+        const product = await Product.findById(productId)
+            .populate({
+                path: 'colors.color', // Populate the color field in colors array
+                model: 'Color',
+                select: 'name displayName hexCode', // Select fields to include
+            })
+            .populate({
+                path: 'sizes.size', // Populate the size field in sizes array
+                model: 'Size',
+                select: 'name displayName displayOrder', // Select fields to include
+            });
+
+        if (!product) {
+            return res.status(404).json({ message: 'Product not found' });
+        }
+
+        if (!product.isActive) {
             return res.status(400).json({ message: 'No Product Found!' });
         }
-        if(!product.stock || product.stock === 0){
+
+        if (!product.stock || product.stock === 0) {
             return res.status(400).json({ message: 'No stock available for this product!' });
         }
-                // If the user is authenticated, get their wishlist
-                if (req.user) {
-                    const user = await User.findById(req.user._id).select('wishlist');
-                    if (user) {
-                        userWishlist = user.wishlist.map((item) => item.toString());
-                    }
-                }
-        
-                // Add the isWishlisted flag to each product
-                // const updatedProducts = saleProducts.map((product) => ({
-                //     ...product.toObject(), // Convert Mongoose document to plain object
-                //     isWishlisted: userWishlist.includes(product._id.toString()),
-                // }));
-        const isWishlisted = userWishlist.includes(product._id.toString())
-        const productWithWishlistInfo = {
-            ...product.toObject(), // Convert Mongoose document to plain object (if needed)
-            isWishlisted, // Add the isWishlisted flag
+
+        // Check if the user has rated the product
+        let userRatingStatus = {
+            hasRated: false,
+            rating: null,
+            comment: null,
         };
-        if(productWithWishlistInfo){
-            res.status(201).json({ data: productWithWishlistInfo });
-        } else {
-            res.status(404).json({ message: 'Product not found' });
+
+        if (userId) {
+            const review = await Review.findOne({ user: userId, product: productId });
+            if (review) {
+                userRatingStatus = {
+                    hasRated: true,
+                    rating: review.rating,
+                    comment: review.comment,
+                };
+            }
         }
+
+        // Check if the user has wishlisted the product
+        let isWishlisted = false;
+        if (userId) {
+            const user = await User.findById(userId).select('wishlist');
+            if (user) {
+                isWishlisted = user.wishlist.some((item) => item.toString() === productId);
+            }
+        }
+
+        // Add the additional data to the product object
+        const productWithAdditionalInfo = {
+            ...product.toObject(), // Convert Mongoose document to plain object
+            isWishlisted,
+            userRatingStatus, // Include the user's rating status
+        };
+
+        res.status(200).json({ data: productWithAdditionalInfo });
     } catch (error) {
-        console.log(error, 'error')
-        res.status(400).json({ message: 'Error fetching product', error });
+        console.error('Error fetching product:', error);
+        res.status(500).json({ message: 'Error fetching product', error });
     }
 });
+
 
 productRouter.put("/:productId", userAuth, async (req, res) => {
     const productId = req.params.productId;
@@ -274,6 +304,7 @@ productRouter.get('/:productId/similar',userAuth, async (req, res) => {
 productRouter.post('/rate', userAuth, async (req, res) => {
     try {
         const { productId, rating, comment } = req.body;
+        const userId = req.user._id;
 
         // Validate input
         if (!productId || !rating) {
@@ -290,7 +321,7 @@ productRouter.post('/rate', userAuth, async (req, res) => {
         }
 
         // Check if the user has already reviewed the product
-        const existingReview = await Review.findOne({ user: req.user._id, product: productId });
+        const existingReview = await Review.findOne({ user: userId, product: productId });
         if (existingReview) {
             // Update the existing review
             existingReview.rating = rating;
@@ -299,10 +330,10 @@ productRouter.post('/rate', userAuth, async (req, res) => {
         } else {
             // Create a new review
             const review = new Review({
-                user: req.user._id,
+                user: userId,
                 product: productId,
                 rating,
-                comment
+                comment,
             });
             await review.save();
 
@@ -318,7 +349,50 @@ productRouter.post('/rate', userAuth, async (req, res) => {
         product.rating = avgRating;
         await product.save();
 
-        res.status(200).json({ message: 'Rating submitted successfully.', product });
+        // Retrieve the updated product details with populated data
+        const updatedProduct = await Product.findById(productId)
+            .populate({
+                path: 'colors.color',
+                model: 'Color',
+                select: 'name displayName hexCode',
+            })
+            .populate({
+                path: 'sizes.size',
+                model: 'Size',
+                select: 'name displayName displayOrder',
+            });
+
+        // Check if the user has wishlisted the product
+        let isWishlisted = false;
+        const user = await User.findById(userId).select('wishlist');
+        if (user) {
+            isWishlisted = user.wishlist.some((item) => item.toString() === productId);
+        }
+
+        // Check if the user has rated the product
+        let userRatingStatus = {
+            hasRated: false,
+            rating: null,
+            comment: null,
+        };
+
+        const userReview = await Review.findOne({ user: userId, product: productId });
+        if (userReview) {
+            userRatingStatus = {
+                hasRated: true,
+                rating: userReview.rating,
+                comment: userReview.comment,
+            };
+        }
+
+        // Combine product data with additional info
+        const productWithAdditionalInfo = {
+            ...updatedProduct.toObject(),
+            isWishlisted,
+            userRatingStatus,
+        };
+
+        res.status(200).json({ message: 'Rating submitted successfully.', product: productWithAdditionalInfo });
     } catch (error) {
         console.error('Error rating product:', error);
         res.status(500).json({ message: 'Failed to rate product.', error });
