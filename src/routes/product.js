@@ -77,6 +77,7 @@ productRouter.get('/new', userAuth, async (req, res) => {
             .populate('category subcategory') // Populate category and subcategory references
             .populate('sizes.size') // Populate size references if needed
             .populate('colors.color'); // Populate color references if needed
+
         let userWishlist = [];
 
         // If the user is authenticated, get their wishlist
@@ -87,18 +88,33 @@ productRouter.get('/new', userAuth, async (req, res) => {
             }
         }
 
-        // Add the isWishlisted flag to each product
-        const updatedProducts = products.map((product) => ({
-            ...product.toObject(), // Convert Mongoose document to plain object
-            isWishlisted: userWishlist.includes(product._id.toString()),
-        }));
+        // Add the isWishlisted flag and review data to each product
+        const updatedProducts = await Promise.all(
+            products.map(async (product) => {
+                // Calculate review count and average rating
+                const reviews = await Review.find({ product: product._id }).select('rating');
+                const reviewCount = reviews.length;
+                const averageRating =
+                    reviewCount > 0
+                        ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount
+                        : 0;
+
+                return {
+                    ...product.toObject(), // Convert Mongoose document to plain object
+                    isWishlisted: userWishlist.includes(product._id.toString()),
+                    review_count: reviewCount,
+                    average_rating: parseFloat(averageRating.toFixed(1)), // Round to 1 decimal place
+                };
+            })
+        );
 
         res.status(200).json(updatedProducts);
     } catch (error) {
-        console.error("Error fetching new products:", error);
-        res.status(500).json({ message: "Error fetching new products", error });
+        console.error('Error fetching new products:', error);
+        res.status(500).json({ message: 'Error fetching new products', error });
     }
 });
+
 
 
 productRouter.get('/sale', userAuth, async (req, res) => {
@@ -109,13 +125,14 @@ productRouter.get('/sale', userAuth, async (req, res) => {
         // Fetch sale products (where sellingPrice is less than the original price)
         const saleProducts = await Product.find({
                 isActive: true, // Only active products
-                $expr: { $lt: ["$sellingPrice", "$price"] } // Compare sellingPrice and price
+                $expr: { $lt: ["$sellingPrice", "$price"] }, // Compare sellingPrice and price
             })
             .sort({ createdAt: -1 }) // Sort by newest first
             .limit(limit) // Limit the number of sale products
             .populate('category subcategory') // Populate category and subcategory references
             .populate('sizes.size') // Populate size references if needed
             .populate('colors.color'); // Populate color references if needed
+
         let userWishlist = [];
 
         // If the user is authenticated, get their wishlist
@@ -126,24 +143,38 @@ productRouter.get('/sale', userAuth, async (req, res) => {
             }
         }
 
-        // Add the isWishlisted flag to each product
-        const updatedProducts = saleProducts.map((product) => ({
-            ...product.toObject(), // Convert Mongoose document to plain object
-            isWishlisted: userWishlist.includes(product._id.toString()),
-        }));
+        // Add the isWishlisted flag and review data to each product
+        const updatedProducts = await Promise.all(
+            saleProducts.map(async (product) => {
+                // Calculate review count and average rating
+                const reviews = await Review.find({ product: product._id }).select('rating');
+                const reviewCount = reviews.length;
+                const averageRating =
+                    reviewCount > 0
+                        ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount
+                        : 0;
+
+                return {
+                    ...product.toObject(), // Convert Mongoose document to plain object
+                    isWishlisted: userWishlist.includes(product._id.toString()),
+                    review_count: reviewCount,
+                    average_rating: parseFloat(averageRating.toFixed(1)), // Round to 1 decimal place
+                };
+            })
+        );
 
         res.status(200).json(updatedProducts);
     } catch (error) {
-        console.error("Error fetching sale products:", error);
-        res.status(500).json({ message: "Error fetching sale products", error });
+        console.error('Error fetching sale products:', error);
+        res.status(500).json({ message: 'Error fetching sale products', error });
     }
 });
+
 
 productRouter.get('/:id', userAuth, async (req, res) => {
     try {
         const productId = req.params.id;
-        const userId = req.user ? req.user._id : null;
-
+        const userId = req.user ? req.user._id : null; // Ensure user ID is available
         // Fetch the product details with colors and sizes populated
         const product = await Product.findById(productId)
             .populate({
@@ -169,7 +200,7 @@ productRouter.get('/:id', userAuth, async (req, res) => {
             return res.status(400).json({ message: 'No stock available for this product!' });
         }
 
-        // Check if the user has rated the product
+        // Initialize userRatingStatus
         let userRatingStatus = {
             hasRated: false,
             rating: null,
@@ -177,6 +208,7 @@ productRouter.get('/:id', userAuth, async (req, res) => {
         };
 
         if (userId) {
+            // Check if the user has rated the product
             const review = await Review.findOne({ user: userId, product: productId });
             if (review) {
                 userRatingStatus = {
@@ -209,6 +241,7 @@ productRouter.get('/:id', userAuth, async (req, res) => {
         res.status(500).json({ message: 'Error fetching product', error });
     }
 });
+
 
 
 productRouter.put("/:productId", userAuth, async (req, res) => {
@@ -247,7 +280,7 @@ productRouter.put("/:productId", userAuth, async (req, res) => {
     }
 });
 
-productRouter.get('/:productId/similar',userAuth, async (req, res) => {
+productRouter.get('/:productId/similar', userAuth, async (req, res) => {
     const { productId } = req.params;
 
     try {
@@ -266,7 +299,7 @@ productRouter.get('/:productId/similar',userAuth, async (req, res) => {
             isActive: true, // Ensure only active products are fetched
             $or: [
                 { categories: { $in: Array.isArray(product.categories) ? product.categories : [product.categories] } },
-                { subcategories: { $in:  Array.isArray(product.subcategories) ? product.subcategories : [product.subcategories]  } },
+                { subcategories: { $in: Array.isArray(product.subcategories) ? product.subcategories : [product.subcategories] } },
                 { brand: product.brand }
             ]
         };
@@ -276,10 +309,8 @@ productRouter.get('/:productId/similar',userAuth, async (req, res) => {
             .populate("category", "name")
             .populate("sizes.size", "size")
             .populate("colors.color", "name")
-            .populate("reviews", "rating")
-            .limit(10)
+            .limit(10);
 
-        
         let userWishlist = [];
         if (req.user) {
             const user = await User.findById(req.user._id).select("wishlist");
@@ -287,12 +318,27 @@ productRouter.get('/:productId/similar',userAuth, async (req, res) => {
                 userWishlist = user.wishlist.map((item) => item.toString());
             }
         }
-        // Add the isWishlisted flag and calculated fields to each product
-        const updatedSimilarProducts = similarProducts.map((product) => ({
-            ...product?.toObject(),
-            isWishlisted: userWishlist.includes(product._id.toString()),
-            hasDiscount: product.sellingPrice < product.price
-        }));
+
+        // Add the isWishlisted flag and review data to each product
+        const updatedSimilarProducts = await Promise.all(
+            similarProducts.map(async (product) => {
+                // Calculate review count and average rating
+                const reviews = await Review.find({ product: product._id }).select('rating');
+                const reviewCount = reviews.length;
+                const averageRating =
+                    reviewCount > 0
+                        ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount
+                        : 0;
+
+                return {
+                    ...product.toObject(), // Convert Mongoose document to plain object
+                    isWishlisted: userWishlist.includes(product._id.toString()),
+                    hasDiscount: product.sellingPrice < product.price,
+                    review_count: reviewCount,
+                    average_rating: parseFloat(averageRating.toFixed(1)), // Round to 1 decimal place
+                };
+            })
+        );
 
         res.status(200).json({ success: true, similarProducts: updatedSimilarProducts });
     } catch (error) {
@@ -300,6 +346,7 @@ productRouter.get('/:productId/similar',userAuth, async (req, res) => {
         res.status(500).json({ success: false, message: 'Error fetching similar products', error });
     }
 });
+
 
 productRouter.post('/rate', userAuth, async (req, res) => {
     try {
