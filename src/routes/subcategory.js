@@ -131,84 +131,13 @@ subcategoryRouter.get(
       });
     } catch (error) {
       console.error("Error fetching products for the subcategory:", error);
-      res
-        .status(500)
-        .json({
-          message: "Error fetching products for the subcategory",
-          error,
-        });
+      res.status(500).json({
+        message: "Error fetching products for the subcategory",
+        error,
+      });
     }
   }
 );
-
-const getFacetsData = async (subcategoryId) => {
-  const subcategoryObjectId = new mongoose.Types.ObjectId(subcategoryId);
-
-  return await Product.aggregate([
-    { $match: { subcategory: subcategoryObjectId, isActive: true } },
-    {
-      $facet: {
-        colors: [
-          { $unwind: { path: "$colors" } },
-          {
-            $lookup: {
-              from: "colors", // Replace with your actual collection name
-              localField: "colors.color",
-              foreignField: "_id",
-              as: "colorDetails",
-            },
-          },
-          { $unwind: { path: "$colorDetails" } },
-          {
-            $group: {
-              _id: "$colorDetails._id",
-              name: { $first: "$colorDetails.name" },
-              hexCode: { $first: "$colorDetails.hexCode" },
-              count: { $sum: 1 },
-            },
-          },
-        ],
-        sizes: [
-          { $unwind: { path: "$sizes" } },
-          {
-            $lookup: {
-              from: "sizes",
-              localField: "sizes.size",
-              foreignField: "_id",
-              as: "sizeDetails",
-            },
-          },
-          { $unwind: { path: "$sizeDetails" } },
-          {
-            $group: {
-              _id: "$sizeDetails._id",
-              displayName: { $first: "$sizeDetails.displayName" },
-              count: { $sum: 1 },
-            },
-          },
-        ],
-        brands: [
-          {
-            $group: {
-              _id: "$brand",
-              name: { $first: "$brand" },
-              count: { $sum: 1 },
-            },
-          },
-        ],
-        priceRange: [
-          {
-            $group: {
-              _id: null,
-              minPrice: { $min: "$sellingPrice" },
-              maxPrice: { $max: "$sellingPrice" },
-            },
-          },
-        ],
-      },
-    },
-  ]);
-};
 
 subcategoryRouter.get(
   "/:subcategoryId/products/facets",
