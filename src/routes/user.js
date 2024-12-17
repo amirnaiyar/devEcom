@@ -49,8 +49,6 @@ userRouter.post("/profile/update", userAuth, async (req, res) => {
 });
 
 // Add Shipping Address API
-
-// Add Shipping Address API
 userRouter.post("/add-shipping-address", userAuth, async (req, res) => {
   const { fullName, phone, street, city, state, postalCode, country } =
     req.body;
@@ -81,26 +79,24 @@ userRouter.post("/add-shipping-address", userAuth, async (req, res) => {
       state,
       postalCode,
       country,
+      isDefault: user.addresses.length === 0, // Set as default if first address
     };
 
-    // Add the new address to user's addresses array
+    // Add the new address
     user.addresses.push(newAddress);
 
-    // Set defaultAddressId if it's the only address
+    // Update defaultAddressId if it's the only address
     if (user.addresses.length === 1) {
       user.defaultAddressId = user.addresses[0]._id;
     }
 
-    // Save the user document with the new address and default setting
-    await user.save();
+    // Save and return updated user data
+    const updatedUser = await user.save();
 
-    res
-      .status(201)
-      .json({
-        message: "Address added successfully",
-        address: newAddress,
-        defaultAddressId: user.defaultAddressId,
-      });
+    res.status(201).json({
+      message: "Address added successfully",
+      user: updatedUser, // Return updated user object
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });
@@ -128,12 +124,10 @@ userRouter.post("/set-default-address", userAuth, async (req, res) => {
     // // Save the changes
     // await user.save();
 
-    res
-      .status(200)
-      .json({
-        message: "Default address updated successfully",
-        defaultAddressId: user.defaultAddressId,
-      });
+    res.status(200).json({
+      message: "Default address updated successfully",
+      defaultAddressId: user.defaultAddressId,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });
@@ -206,12 +200,10 @@ userRouter.post("/wishlist/:productId", userAuth, async (req, res) => {
       user.wishlist.push(productId);
       await user.save();
 
-      return res
-        .status(200)
-        .json({
-          message: "Product added to wishlist",
-          wishlist: user.wishlist,
-        });
+      return res.status(200).json({
+        message: "Product added to wishlist",
+        wishlist: user.wishlist,
+      });
     } else if (action === "remove") {
       // Check if the product is in the wishlist
       const isInWishlist = user.wishlist.some(
@@ -229,12 +221,10 @@ userRouter.post("/wishlist/:productId", userAuth, async (req, res) => {
       );
       await user.save();
 
-      return res
-        .status(200)
-        .json({
-          message: "Product removed from wishlist",
-          wishlist: user.wishlist,
-        });
+      return res.status(200).json({
+        message: "Product removed from wishlist",
+        wishlist: user.wishlist,
+      });
     } else {
       return res
         .status(400)
