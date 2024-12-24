@@ -1,16 +1,19 @@
-const mongoose  = require("mongoose");
+const mongoose = require("mongoose");
+require("./product"); // Ensure the Product schema is loaded
 
-const subcategorySchema = new mongoose.Schema({
+const subcategorySchema = new mongoose.Schema(
+  {
     name: { type: String, required: true },
     slug: { type: String, required: true },
     description: { type: String },
     category: { type: mongoose.Schema.Types.ObjectId, ref: "Category" }, // Optional: Link back to the parent category if needed
-    products: [{ type: mongoose.Schema.Types.ObjectId, ref: "Products" }],
-  }, {
+    product: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
+  },
+  {
     timestamps: true,
-  });
-  
-  const Subcategory = mongoose.model("Subcategory", subcategorySchema);
-  
-  module.exports = Subcategory;
-  
+  }
+);
+
+const Subcategory = mongoose.model("Subcategory", subcategorySchema);
+
+module.exports = Subcategory;

@@ -1,12 +1,78 @@
 const express = require("express");
+const Product = require("../models/product");
 const Subcategory = require("../models/subcategory");
 const Category = require("../models/category");
-const Product = require("../models/product");
 const Review = require("../models/review");
 const User = require("../models/user");
-const { userAuth } = require("../middleware/auth");
+const { userAuth, adminAuth } = require("../middleware/auth");
 const { default: mongoose } = require("mongoose");
 const subcategoryRouter = express.Router();
+
+// GET all subcategories
+subcategoryRouter.get("/", async (req, res) => {
+  try {
+    const subcategories = await Subcategory.aggregate([
+      // Populate the category data
+      {
+        $lookup: {
+          from: "categories", // The collection name for categories in MongoDB
+          localField: "category",
+          foreignField: "_id",
+          as: "category",
+        },
+      },
+      {
+        $unwind: {
+          path: "$category", // Unwind the category array to include a single object
+          preserveNullAndEmptyArrays: true, // Keep subcategories even if they have no category
+        },
+      },
+      // Populate product count
+      {
+        $lookup: {
+          from: "products", // The collection name for products in MongoDB
+          localField: "_id", // Subcategory ID
+          foreignField: "subcategory", // Products' subcategory field
+          as: "products",
+        },
+      },
+      {
+        $addFields: {
+          productCount: { $size: "$products" }, // Add a field for product count
+        },
+      },
+      {
+        $project: {
+          products: 0, // Optionally exclude the populated products array
+        },
+      },
+    ]);
+
+    res.status(200).json({ success: true, data: subcategories });
+  } catch (error) {
+    console.error("Error fetching subcategories:", error);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
+
+subcategoryRouter.get("/", async (req, res) => {
+  try {
+    const subcategories = await Subcategory.find()
+      .populate("category", "name slug description") // Populate category data
+      .populate("products", "name"); // Populate product names
+
+    // Add product count dynamically
+    const result = subcategories.map((subcategory) => ({
+      ...subcategory.toObject(),
+      productCount: subcategory.products.length, // Count products in this subcategory
+    }));
+
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    console.error("Error fetching subcategories:", error);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+});
 
 // Create a new category
 subcategoryRouter.post("/", async (req, res) => {
