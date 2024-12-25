@@ -4,6 +4,28 @@ const { userAuth } = require("../middleware/auth");
 const User = require("../models/user");
 const Product = require("../models/product");
 
+// Get all users API for admin
+userRouter.get("/admin", async (req, res) => {
+  try {
+    const users = await User.find()
+      .select("-password -refreshToken") // Exclude sensitive fields like password and refreshToken
+      .populate("wishlist", "name price") // Populate wishlist products with name and price
+      .populate("cart.product", "name price") // Populate cart products with name and price
+      .populate("orderHistory", "totalPrice createdAt orderStatus") // Populate order history with essential details
+      .sort({ createdAt: -1 }); // Sort by newest users first
+
+    res.status(200).json({
+      message: "Users retrieved successfully",
+      data: users,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Error retrieving users",
+      error: error.message,
+    });
+  }
+});
+
 userRouter.get("/profile", userAuth, (req, res) => {
   try {
     const user = req.user;
@@ -133,42 +155,6 @@ userRouter.post("/set-default-address", userAuth, async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
-// Add to Wishlist API
-// userRouter.post("/wishlist/add/:productId", userAuth, async (req, res) => {
-//     const { productId } = req.params;
-
-//     try {
-//         // Check if the product exists
-//         const product = await Product.findById(productId);
-//         if (!product) {
-//             return res.status(404).json({ message: "Product not found" });
-//         }
-
-//         // Find the user
-//         const user = await User.findById(req.user._id);
-//         if (!user) {
-//             return res.status(404).json({ message: "User not found" });
-//         }
-
-//         // Check if the product is already in the wishlist
-//         const isInWishlist = user.wishlist.some(
-//             (item) => item.toString() === productId
-//         );
-//         if (isInWishlist) {
-//             return res.status(400).json({ message: "Product already in wishlist" });
-//         }
-
-//         // Add the product to the wishlist
-//         user.wishlist.push(productId);
-//         await user.save();
-
-//         res.status(200).json({ message: "Product added to wishlist", wishlist: user.wishlist, user });
-//     } catch (error) {
-//         console.error(error);
-//         res.status(500).json({ message: "Internal server error", error });
-//     }
-// });
 
 userRouter.post("/wishlist/:productId", userAuth, async (req, res) => {
   const { productId } = req.params;

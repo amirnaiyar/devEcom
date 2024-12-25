@@ -6,8 +6,55 @@ const Review = require("../models/review");
 const User = require("../models/user");
 const { userAuth, adminAuth } = require("../middleware/auth");
 const { default: mongoose } = require("mongoose");
+const { generateSlug } = require("../utils/utils");
 const subcategoryRouter = express.Router();
 
+subcategoryRouter.post("/", adminAuth, async (req, res) => {
+  const { name, description, categoryId } = req.body;
+
+  try {
+    // Check if the category exists
+    const category = await Category.findById(categoryId);
+
+    if (!category) {
+      return res.status(404).json({ message: "Category not found" });
+    }
+
+    // Generate slug from name
+    const slug = generateSlug(name);
+
+    // Check if slug is unique
+    const existingSubcategory = await Subcategory.findOne({ slug });
+    if (existingSubcategory) {
+      return res
+        .status(400)
+        .json({ message: "Subcategory with this slug already exists" });
+    }
+
+    // Create a new subcategory with the slug
+    const subcategory = new Subcategory({
+      name,
+      slug, // Explicitly set slug here
+      description,
+      category: categoryId,
+    });
+
+    await subcategory.save();
+
+    // Add subcategory to the category's subcategories array
+    category.subcategories.push(subcategory._id);
+    await category.save();
+
+    res.status(201).json({
+      message: "Subcategory created successfully",
+      subcategory,
+    });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "Error creating subcategory", error: error.message });
+  }
+});
 // GET all subcategories
 subcategoryRouter.get("/", async (req, res) => {
   try {
@@ -55,58 +102,26 @@ subcategoryRouter.get("/", async (req, res) => {
   }
 });
 
-subcategoryRouter.get("/", async (req, res) => {
-  try {
-    const subcategories = await Subcategory.find()
-      .populate("category", "name slug description") // Populate category data
-      .populate("products", "name"); // Populate product names
+// subcategoryRouter.get("/", async (req, res) => {
+//   try {
+//     const subcategories = await Subcategory.find()
+//       .populate("category", "name slug description") // Populate category data
+//       .populate("products", "name"); // Populate product names
 
-    // Add product count dynamically
-    const result = subcategories.map((subcategory) => ({
-      ...subcategory.toObject(),
-      productCount: subcategory.products.length, // Count products in this subcategory
-    }));
+//     // Add product count dynamically
+//     const result = subcategories.map((subcategory) => ({
+//       ...subcategory.toObject(),
+//       productCount: subcategory.products.length, // Count products in this subcategory
+//     }));
 
-    res.status(200).json({ success: true, data: result });
-  } catch (error) {
-    console.error("Error fetching subcategories:", error);
-    res.status(500).json({ success: false, error: "Internal Server Error" });
-  }
-});
+//     res.status(200).json({ success: true, data: result });
+//   } catch (error) {
+//     console.error("Error fetching subcategories:", error);
+//     res.status(500).json({ success: false, error: "Internal Server Error" });
+//   }
+// });
 
 // Create a new category
-subcategoryRouter.post("/", async (req, res) => {
-  const { name, slug, description, categoryId } = req.body;
-
-  try {
-    // Check if the category exists
-    const category = await Category.findById(categoryId);
-    if (!category) {
-      return res.status(404).json({ message: "Category not found" });
-    }
-
-    // Create a new subcategory
-    const subcategory = new Subcategory({
-      name,
-      slug,
-      description,
-      category: categoryId,
-    });
-
-    await subcategory.save();
-
-    // Add subcategory to the category's subcategories array
-    category.subcategories.push(subcategory._id);
-    await category.save();
-
-    res.status(201).json({
-      message: "Subcategory created successfully",
-      subcategory,
-    });
-  } catch (error) {
-    res.status(500).json({ message: "Error creating subcategory", error });
-  }
-});
 
 // Get all products by subcategory
 subcategoryRouter.get(

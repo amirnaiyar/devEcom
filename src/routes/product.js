@@ -62,7 +62,10 @@ productRouter.post("/", async (req, res) => {
       colors,
     });
     await product.save();
-    res.status(201).json(product);
+    res.status(201).json({
+      message: "Product added successfully",
+      product,
+    });
   } catch (error) {
     res.status(400).json({ message: "Error creating product", error });
   }
