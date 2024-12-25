@@ -20,7 +20,7 @@ var transporter = nodemailer.createTransport({
 
 // Signup route
 authRouter.post("/signup", async (req, res) => {
-  const { username, password, email, name, phone, address } = req.body;
+  const { password, email, name, phone, role } = req.body;
 
   try {
     // Check if the user already exists
@@ -39,7 +39,8 @@ authRouter.post("/signup", async (req, res) => {
       password: hashedPassword,
       name,
       phone,
-      address,
+      role,
+      // address,
     });
 
     // Generate tokens
@@ -63,7 +64,8 @@ authRouter.post("/signup", async (req, res) => {
       refreshToken,
     });
   } catch (error) {
-    res.status(500).send("Server error: ", error);
+    // res.status(500).send("Server error: ", error);
+    res.status(400).send("Server error: ", error);
   }
 });
 
