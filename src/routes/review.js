@@ -1,7 +1,7 @@
 const express = require("express");
 const Review = require("../models/review");
 const Product = require("../models/product");
-const { userAuth } = require("../middleware/auth");
+const { userAuth, adminAuth } = require("../middleware/auth");
 const reviewRouter = express.Router();
 
 // Middleware to get the authenticated user's ID (assumes a user object is added to the request by authentication middleware)
@@ -27,6 +27,58 @@ const getUserReviews = async (req, res) => {
     });
   }
 };
+
+reviewRouter.get("/all", async (req, res) => {
+  try {
+    const { productId, userId } = req.query;
+
+    // Initialize the filter object
+    const filter = {};
+
+    // Handle productId filter if provided and not "all"
+    if (productId && productId !== "all") {
+      if (!mongoose.Types.ObjectId.isValid(productId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid product ID format",
+        });
+      }
+      filter.product = productId;
+    }
+
+    // Handle userId filter if provided and not "all"
+    if (userId && userId !== "all") {
+      if (!mongoose.Types.ObjectId.isValid(userId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid user ID format",
+        });
+      }
+      filter.user = userId;
+    }
+
+    // Fetch reviews with the filter
+    const reviews = await Review.find(filter)
+      .populate("product", "name price images")
+      .populate("user", "name");
+
+    console.log(reviews, "reviews");
+
+    res.status(200).json({
+      success: true,
+      message: "Reviews fetched successfully",
+      data: reviews,
+    });
+  } catch (error) {
+    console.log(error, "error");
+    console.error("Error fetching reviews:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching reviews",
+      error: error.message,
+    });
+  }
+});
 
 // reviewRouter.get("/my-reviews", userAuth, getUserReviews);
 reviewRouter.get("/my-reviews", userAuth, getUserReviews);
